@@ -29,7 +29,8 @@ public enum CraftBukkitVersion {
   v1_21_R1,
   v1_21_R2,
   v1_21_R3,
-  v1_21_R4;
+  v1_21_R4,
+  v1_21_R5;
 
   private static final @NotNull Logger logger = LoggerFactory.getLogger(CraftBukkitVersion.class);
   private static final @NotNull CraftBukkitVersion CURRENT = createCurrent();
