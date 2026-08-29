@@ -96,6 +96,7 @@
                   <mapSet>mojang</mapSet>
                   <name>mojang-1.20.6</name>
                   <minecraftVersion>1.20.6</minecraftVersion>
+                  <buildDataDirectory>${project.basedir}/build-data/1.20.6</buildDataDirectory>
                   <predicates>
                     <predicate>craftbukkit_version:{v1_20_R4}</predicate>
                   </predicates>
@@ -105,6 +106,7 @@
                   <mapSet>mojang</mapSet>
                   <name>mojang-1.20.4</name>
                   <minecraftVersion>1.20.4</minecraftVersion>
+                  <buildDataDirectory>${project.basedir}/build-data/1.20.4</buildDataDirectory>
                   <predicates>
                     <predicate>craftbukkit_version:{v1_20_R3}</predicate>
                   </predicates>
@@ -114,6 +116,7 @@
                   <mapSet>mojang</mapSet>
                   <name>mojang-1.20.2</name>
                   <minecraftVersion>1.20.2</minecraftVersion>
+                  <buildDataDirectory>${project.basedir}/build-data/1.20.2</buildDataDirectory>
                   <predicates>
                     <predicate>craftbukkit_version:{v1_20_R2}</predicate>
                   </predicates>
@@ -123,6 +126,7 @@
                   <mapSet>mojang</mapSet>
                   <name>mojang-1.20.1</name>
                   <minecraftVersion>1.20.1</minecraftVersion>
+                  <buildDataDirectory>${project.basedir}/build-data/1.20.1</buildDataDirectory>
                   <predicates>
                     <predicate>craftbukkit_version:{v1_20_R1}</predicate>
                   </predicates>
@@ -132,6 +136,7 @@
                   <mapSet>mojang</mapSet>
                   <name>mojang-1.19.4</name>
                   <minecraftVersion>1.19.4</minecraftVersion>
+                  <buildDataDirectory>${project.basedir}/build-data/1.19.4</buildDataDirectory>
                   <predicates>
                     <predicate>craftbukkit_version:{v1_19_R3}</predicate>
                   </predicates>
@@ -141,6 +146,7 @@
                   <mapSet>mojang</mapSet>
                   <name>mojang-1.18.2</name>
                   <minecraftVersion>1.18.2</minecraftVersion>
+                  <buildDataDirectory>${project.basedir}/build-data/1.18.2</buildDataDirectory>
                   <predicates>
                     <predicate>craftbukkit_version:{v1_18_R2}</predicate>
                   </predicates>
@@ -150,6 +156,7 @@
                   <mapSet>mojang</mapSet>
                   <name>mojang-1.17.1</name>
                   <minecraftVersion>1.17.1</minecraftVersion>
+                  <buildDataDirectory>${project.basedir}/build-data/1.17.1</buildDataDirectory>
                   <predicates>
                     <predicate>craftbukkit_version:{v1_17_R1}</predicate>
                   </predicates>
