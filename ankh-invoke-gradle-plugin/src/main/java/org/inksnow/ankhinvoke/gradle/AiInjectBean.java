@@ -1,5 +1,6 @@
 package org.inksnow.ankhinvoke.gradle;
 
+import java.io.File;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Objects;
@@ -10,6 +11,7 @@ public class AiInjectBean implements Serializable {
   private String name;
   private String minecraftVersion;
   private String buildDataHash;
+  private File buildDataDirectory;
   private String[] predicates;
   private boolean useSpigotMapping;
 
@@ -53,6 +55,14 @@ public class AiInjectBean implements Serializable {
     this.buildDataHash = buildDataHash;
   }
 
+  public File getBuildDataDirectory() {
+    return buildDataDirectory;
+  }
+
+  public void setBuildDataDirectory(File buildDataDirectory) {
+    this.buildDataDirectory = buildDataDirectory;
+  }
+
   public String[] getPredicates() {
     return predicates;
   }
@@ -77,6 +87,7 @@ public class AiInjectBean implements Serializable {
         ", name='" + name + '\'' +
         ", minecraftVersion='" + minecraftVersion + '\'' +
         ", buildDataHash='" + buildDataHash + '\'' +
+        ", buildDataDirectory=" + buildDataDirectory +
         ", predicates=" + Arrays.toString(predicates) +
         ", useSpigotMapping=" + useSpigotMapping +
         '}';
@@ -96,6 +107,7 @@ public class AiInjectBean implements Serializable {
     if (!Objects.equals(minecraftVersion, that.minecraftVersion))
       return false;
     if (!Objects.equals(buildDataHash, that.buildDataHash)) return false;
+    if (!Objects.equals(buildDataDirectory, that.buildDataDirectory)) return false;
     // Probably incorrect - comparing Object[] arrays with Arrays.equals
     return Arrays.equals(predicates, that.predicates);
   }
@@ -107,6 +119,7 @@ public class AiInjectBean implements Serializable {
     result = 31 * result + (name != null ? name.hashCode() : 0);
     result = 31 * result + (minecraftVersion != null ? minecraftVersion.hashCode() : 0);
     result = 31 * result + (buildDataHash != null ? buildDataHash.hashCode() : 0);
+    result = 31 * result + (buildDataDirectory != null ? buildDataDirectory.hashCode() : 0);
     result = 31 * result + Arrays.hashCode(predicates);
     result = 31 * result + (useSpigotMapping ? 1 : 0);
     return result;

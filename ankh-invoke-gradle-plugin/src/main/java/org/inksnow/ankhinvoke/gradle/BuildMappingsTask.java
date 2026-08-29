@@ -3,8 +3,12 @@ package org.inksnow.ankhinvoke.gradle;
 import com.google.common.io.Files;
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
+import org.gradle.api.file.FileCollection;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.OutputDirectory;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.inksnow.ankhinvoke.codec.MappingRegistry;
 import org.inksnow.ankhinvoke.codec.TextMetadata;
 import org.inksnow.ankhinvoke.map.BlobMappingGenerator;
@@ -81,6 +85,18 @@ public class BuildMappingsTask extends DefaultTask {
     }
   }
 
+  @InputFiles
+  @PathSensitive(PathSensitivity.RELATIVE)
+  public @NotNull FileCollection getBuildDataDirectories() {
+    List<File> directories = new ArrayList<>();
+    for (AiInjectBean mapping : mappings) {
+      if (mapping.getBuildDataDirectory() != null) {
+        directories.add(mapping.getBuildDataDirectory());
+      }
+    }
+    return getProject().files(directories);
+  }
+
   @OutputDirectory
   public @NotNull File getOutputDirectory() {
     if (outputDirectory == null) {
@@ -94,7 +110,12 @@ public class BuildMappingsTask extends DefaultTask {
   }
 
   private void execute() throws Exception {
-    File cacheDirectory = new File(getProject().getBuildDir(), "ankh-invoke-cache");
+    cleanOutputDirectory();
+    // Keep downloaded Mojang artifacts outside build/, because clean removes build/.
+    File cacheDirectory = new File(
+        getProject().getGradle().getGradleUserHomeDir(),
+        "caches/ankh-invoke"
+    );
     String packageInternalName = ankhInvokePackage.replace('.', '/');
 
     Map<String, Map<String, List<AiInjectBean>>> registryMap = new LinkedHashMap<>();
@@ -106,11 +127,6 @@ public class BuildMappingsTask extends DefaultTask {
 
     TextMetadata.Builder metadata = TextMetadata.builder();
     File metadataFile = new File(getOutputDirectory(), packageInternalName + "/metadata.txt");
-    if (metadataFile.exists()) {
-      try(InputStream in = new FileInputStream(metadataFile)) {
-        metadata.load(in);
-      }
-    }
 
     for (Map.Entry<String, Map<String, List<AiInjectBean>>> registryEntry : registryMap.entrySet()) {
       String registry = registryEntry.getKey();
@@ -129,6 +145,7 @@ public class BuildMappingsTask extends DefaultTask {
           metadata.append("    |- map entry: " + injectBean.getName())
               .append("      |- minecraft version: " + injectBean.getMinecraftVersion())
               .append("      |- build dat hash: " + injectBean.getBuildDataHash())
+              .append("      |- build data directory: " + injectBean.getBuildDataDirectory())
               .append("      |- is use spigot mapping: " + injectBean.isUseSpigotMapping());
           for (String predicate : predicates) {
             metadata.append("      |- predicate: " + predicate);
@@ -143,6 +160,7 @@ public class BuildMappingsTask extends DefaultTask {
               .setLogFunction(getLogger()::warn)
               .setMinecraftVersion(injectBean.getMinecraftVersion())
               .setBuildDataHash(injectBean.getBuildDataHash())
+              .setBuildDataDirectory(injectBean.getBuildDataDirectory())
               .setUseSpigotMapping(injectBean.isUseSpigotMapping())
               .build();
 
@@ -161,6 +179,28 @@ public class BuildMappingsTask extends DefaultTask {
     Files.createParentDirs(metadataFile);
     try (OutputStream out = new FileOutputStream(metadataFile)) {
       metadata.build().save(out);
+    }
+  }
+
+  private void cleanOutputDirectory() throws IOException {
+    File outputDirectory = getOutputDirectory();
+    if (!outputDirectory.isDirectory()) {
+      return;
+    }
+
+    java.nio.file.Path root = outputDirectory.toPath();
+    try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.walk(root)) {
+      paths.sorted(Comparator.reverseOrder())
+          .filter(path -> !path.equals(root))
+          .forEach(path -> {
+            try {
+              java.nio.file.Files.delete(path);
+            } catch (IOException e) {
+              throw new UncheckedIOException(e);
+            }
+          });
+    } catch (UncheckedIOException e) {
+      throw e.getCause();
     }
   }
 }

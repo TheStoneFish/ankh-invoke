@@ -42,6 +42,10 @@ import java.util.zip.GZIPOutputStream;
 
 public final class BlobMappingGenerator {
   private static final @NotNull String SPIGOT_BUILD_DATA_URL = "https://hub.spigotmc.org/stash/projects/SPIGOT/repos/builddata/raw/";
+  private static final int DOWNLOAD_ATTEMPTS = 3;
+  private static final int DOWNLOAD_CONNECT_TIMEOUT_MILLIS = 15_000;
+  private static final int DOWNLOAD_READ_TIMEOUT_MILLIS = 120_000;
+  private static final long DOWNLOAD_RETRY_DELAY_MILLIS = 1_000L;
   private static final @NotNull Gson gson = new GsonBuilder().create();
 
   private final @NotNull Consumer<String> logFunction;
@@ -49,7 +53,8 @@ public final class BlobMappingGenerator {
   private final boolean disableCache;
   private final @NotNull File targetFile;
   private final @NotNull String minecraftVersion;
-  private final @NotNull String buildDataHash;
+  private final @Nullable String buildDataHash;
+  private final @Nullable File buildDataDirectory;
   private final boolean useSpigotMapping;
 
   private final @NotNull JointProvider inheritanceProviders;
@@ -59,13 +64,14 @@ public final class BlobMappingGenerator {
   private final @NotNull Remapper mojangRemapper;
   private final @NotNull Map<@NotNull String, @NotNull ClassBean> classBeanMap;
 
-  private BlobMappingGenerator(@NotNull Consumer<String> logFunction, @NotNull File cacheDirectory, boolean disableCache, @NotNull File targetFile, @NotNull String minecraftVersion, @NotNull String buildDataHash, boolean useSpigotMapping) {
+  private BlobMappingGenerator(@NotNull Consumer<String> logFunction, @NotNull File cacheDirectory, boolean disableCache, @NotNull File targetFile, @NotNull String minecraftVersion, @Nullable String buildDataHash, @Nullable File buildDataDirectory, boolean useSpigotMapping) {
     this.logFunction = logFunction;
     this.cacheDirectory = cacheDirectory;
     this.disableCache = disableCache;
     this.targetFile = targetFile;
     this.minecraftVersion = minecraftVersion;
     this.buildDataHash = buildDataHash;
+    this.buildDataDirectory = buildDataDirectory;
     this.useSpigotMapping = useSpigotMapping;
 
     this.inheritanceProviders = new JointProvider();
@@ -135,29 +141,29 @@ public final class BlobMappingGenerator {
     String serverUrl = buildDataInfo.get("serverUrl").getAsString();
     String mappingsUrl = buildDataInfo.get("mappingsUrl").getAsString();
 
-    inheritanceProviders.add(new JarProvider(Jar.init(getFile(null, serverUrl))));
+    inheritanceProviders.add(new JarProvider(Jar.init(getRemoteFile(serverUrl))));
 
-    try (BufferedReader reader = getReader(null, mappingsUrl)) {
+    try (BufferedReader reader = getRemoteReader(mappingsUrl)) {
       mojangJarMapping.loadMappings(reader, null, null, false);
     }
 
     JsonElement classMappingsElement = buildDataInfo.get("classMappings");
     if (classMappingsElement != null) {
-      try (BufferedReader reader = getReader(buildDataHash, "mappings/" + classMappingsElement.getAsString())) {
+      try (BufferedReader reader = getBuildDataReader("mappings/" + classMappingsElement.getAsString())) {
         spigotJarMapping.loadMappings(reader, null, null, false);
       }
     }
 
     JsonElement memberMappingsElement = buildDataInfo.get("memberMappings");
     if (memberMappingsElement != null) {
-      try (BufferedReader reader = getReader(buildDataHash, "mappings/" + memberMappingsElement.getAsString())) {
+      try (BufferedReader reader = getBuildDataReader("mappings/" + memberMappingsElement.getAsString())) {
         spigotJarMapping.loadMappings(reader, null, null, false);
       }
     }
 
     JsonElement packageMappingsElement = buildDataInfo.get("packageMappings");
     if (packageMappingsElement != null) {
-      try (BufferedReader reader = getReader(buildDataHash, "mappings/" + packageMappingsElement.getAsString())) {
+      try (BufferedReader reader = getBuildDataReader("mappings/" + packageMappingsElement.getAsString())) {
         spigotJarMapping.loadMappings(reader, null, null, false);
       }
     }
@@ -188,7 +194,8 @@ public final class BlobMappingGenerator {
 
   public void run() throws IOException {
     log("generate reobf mappings");
-    String fileName = minecraftVersion + "_" + buildDataHash + "_" + (useSpigotMapping ? "spigot" : "mojang");
+    String buildDataIdentity = buildDataHash == null ? "local" : buildDataHash;
+    String fileName = minecraftVersion + "_" + buildDataIdentity + "_" + (useSpigotMapping ? "spigot" : "mojang");
     File cacheFile = getCacheFile("blobmap", fileName, false);
     File cacheTmpFile = getCacheFile("blobmap", fileName, true);
     if (false && !disableCache) {
@@ -202,7 +209,7 @@ public final class BlobMappingGenerator {
     }
 
     JsonObject buildDataInfo;
-    try (BufferedReader reader = getReader(buildDataHash, "info.json")) {
+    try (BufferedReader reader = getBuildDataReader("info.json")) {
       buildDataInfo = gson.fromJson(reader, JsonObject.class);
     }
     String minecraftVersion = buildDataInfo.get("minecraftVersion").getAsString();
@@ -214,7 +221,7 @@ public final class BlobMappingGenerator {
 
     loadMappings(buildDataInfo);
 
-    try (JarInputStream in = new JarInputStream(new FileInputStream(getFile(null, serverUrl)))) {
+    try (JarInputStream in = new JarInputStream(new FileInputStream(getRemoteFile(serverUrl)))) {
       scanJar(in);
     }
     saveBlobMap(cacheTmpFile, cacheFile);
@@ -241,24 +248,7 @@ public final class BlobMappingGenerator {
       return cacheFile;
     }
     log("downloading: ", url, " to ", cacheFile);
-    URLConnection connection = url.openConnection();
-    if (connection instanceof HttpURLConnection) {
-      HttpURLConnection httpConnection = (HttpURLConnection) connection;
-      httpConnection.setInstanceFollowRedirects(false);
-      int responseCode = httpConnection.getResponseCode();
-      if (responseCode == 404) {
-        throw new FileNotFoundException("File not found: " + url);
-      } else if (responseCode >= 300) {
-        throw new IOException("Unexpected response code: " + responseCode + " " + httpConnection.getResponseMessage());
-      }
-    }
-
-    Files.createParentDirs(cacheTmpFile);
-    try (InputStream in = connection.getInputStream()) {
-      try (OutputStream out = new FileOutputStream(cacheTmpFile, false)) {
-        ByteStreams.copy(in, out);
-      }
-    }
+    download(url, cacheTmpFile);
 
     Files.createParentDirs(cacheFile);
     if (!cacheTmpFile.renameTo(cacheFile)) {
@@ -267,14 +257,120 @@ public final class BlobMappingGenerator {
     return cacheFile;
   }
 
+  private void download(@NotNull URL url, @NotNull File cacheTmpFile) throws IOException {
+    IOException lastException = null;
+    for (URL downloadUrl : getDownloadUrls(url)) {
+      for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+        HttpURLConnection httpConnection = null;
+        try {
+          URLConnection connection = downloadUrl.openConnection();
+          connection.setConnectTimeout(DOWNLOAD_CONNECT_TIMEOUT_MILLIS);
+          connection.setReadTimeout(DOWNLOAD_READ_TIMEOUT_MILLIS);
+          if (connection instanceof HttpURLConnection) {
+            httpConnection = (HttpURLConnection) connection;
+            httpConnection.setInstanceFollowRedirects(true);
+            httpConnection.setRequestProperty("User-Agent", "ankh-invoke");
+            int responseCode = httpConnection.getResponseCode();
+            if (responseCode >= 300 && responseCode < 500
+                && responseCode != 408 && responseCode != 429) {
+              throw new NonRetryableDownloadException(
+                  "Unexpected response code: " + responseCode + " " + httpConnection.getResponseMessage()
+              );
+            }
+            if (responseCode >= 500) {
+              throw new IOException(
+                  "Unexpected response code: " + responseCode + " " + httpConnection.getResponseMessage()
+              );
+            }
+          }
+
+          Files.createParentDirs(cacheTmpFile);
+          try (InputStream in = connection.getInputStream();
+               OutputStream out = new FileOutputStream(cacheTmpFile, false)) {
+            ByteStreams.copy(in, out);
+          }
+          return;
+        } catch (NonRetryableDownloadException e) {
+          throw e;
+        } catch (IOException e) {
+          lastException = e;
+          if (attempt == DOWNLOAD_ATTEMPTS) {
+            break;
+          }
+          log("download failed, retrying (", attempt, "/", DOWNLOAD_ATTEMPTS, "): ", downloadUrl, " - ", e.toString());
+          try {
+            Thread.sleep(DOWNLOAD_RETRY_DELAY_MILLIS * attempt);
+          } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while retrying download: " + downloadUrl, interruptedException);
+          }
+        } finally {
+          if (httpConnection != null) {
+            httpConnection.disconnect();
+          }
+        }
+      }
+      log("download source failed, trying fallback: ", downloadUrl);
+    }
+    if (lastException == null) {
+      throw new IOException("No download source available: " + url);
+    }
+    throw lastException;
+  }
+
+  private @NotNull URL[] getDownloadUrls(@NotNull URL url) throws IOException {
+    if ("piston-data.mojang.com".equalsIgnoreCase(url.getHost())) {
+      return new URL[]{
+          url,
+          new URL(url.getProtocol(), "launcher.mojang.com", url.getPort(), url.getFile())
+      };
+    }
+    if ("launcher.mojang.com".equalsIgnoreCase(url.getHost())) {
+      return new URL[]{
+          url,
+          new URL(url.getProtocol(), "piston-data.mojang.com", url.getPort(), url.getFile())
+      };
+    }
+    return new URL[]{url};
+  }
+
+  private static final class NonRetryableDownloadException extends IOException {
+    private NonRetryableDownloadException(@NotNull String message) {
+      super(message);
+    }
+  }
+
+  private @NotNull File getRemoteFile(@NotNull String path) throws IOException {
+    return getFile(null, path);
+  }
+
+  private @NotNull File getBuildDataFile(@NotNull String path) throws IOException {
+    if (buildDataDirectory == null) {
+      if (buildDataHash == null) {
+        throw new IllegalStateException("buildDataHash is null");
+      }
+      return getFile(buildDataHash, path);
+    }
+
+    File file = new File(buildDataDirectory, path);
+    if (!file.isFile()) {
+      throw new FileNotFoundException("BuildData file not found: " + file);
+    }
+    return file;
+  }
+
   private @NotNull File getCacheFile(@NotNull String cacheKey, @NotNull String name, boolean isTmp) {
     cacheKey = SafeIoUtils.safeFileName(cacheKey.replace('-', '_'));
     name = SafeIoUtils.safeFileName(name);
     return new File(cacheDirectory, cacheKey + "-" + name + (isTmp ? ".tmp" : ""));
   }
 
-  private @NotNull BufferedReader getReader(@Nullable String hash, @NotNull String path) throws IOException {
-    return new BufferedReader(new InputStreamReader(new FileInputStream(getFile(hash, path)), StandardCharsets.UTF_8));
+  private @NotNull BufferedReader getRemoteReader(@NotNull String path) throws IOException {
+    return new BufferedReader(new InputStreamReader(new FileInputStream(getRemoteFile(path)), StandardCharsets.UTF_8));
+  }
+
+  private @NotNull BufferedReader getBuildDataReader(@NotNull String path) throws IOException {
+    return new BufferedReader(new InputStreamReader(new FileInputStream(getBuildDataFile(path)), StandardCharsets.UTF_8));
   }
 
   private void scanClass(@NotNull InputStream in) throws IOException {
@@ -341,6 +437,7 @@ public final class BlobMappingGenerator {
     private @Nullable File targetFile;
     private @Nullable String minecraftVersion;
     private @Nullable String buildDataHash;
+    private @Nullable File buildDataDirectory;
     private boolean useSpigotMapping;
     private boolean disableCache;
 
@@ -366,6 +463,11 @@ public final class BlobMappingGenerator {
 
     public @NotNull Builder setBuildDataHash(@Nullable String buildDataHash) {
       this.buildDataHash = buildDataHash;
+      return this;
+    }
+
+    public @NotNull Builder setBuildDataDirectory(@Nullable File buildDataDirectory) {
+      this.buildDataDirectory = buildDataDirectory;
       return this;
     }
 
@@ -399,10 +501,16 @@ public final class BlobMappingGenerator {
       if (minecraftVersion == null) {
         throw new IllegalStateException("minecraftVersion is null");
       }
-      if (buildDataHash == null) {
+      if (buildDataDirectory != null && buildDataHash != null) {
+        throw new IllegalArgumentException("buildDataDirectory and buildDataHash cannot both be configured");
+      }
+      if (buildDataDirectory == null && buildDataHash == null) {
         buildDataHash = SpigotBuildData.requireVersion(minecraftVersion);
       }
-      return new BlobMappingGenerator(logFunction, cacheDirectory, disableCache, targetFile, minecraftVersion, buildDataHash, useSpigotMapping);
+      if (buildDataDirectory != null && !buildDataDirectory.isDirectory()) {
+        throw new IllegalArgumentException("buildDataDirectory is not a directory: " + buildDataDirectory);
+      }
+      return new BlobMappingGenerator(logFunction, cacheDirectory, disableCache, targetFile, minecraftVersion, buildDataHash, buildDataDirectory, useSpigotMapping);
     }
   }
 

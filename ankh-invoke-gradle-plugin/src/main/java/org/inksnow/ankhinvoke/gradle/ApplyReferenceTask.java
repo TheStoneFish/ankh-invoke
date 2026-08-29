@@ -5,6 +5,7 @@ import org.gradle.api.DefaultTask;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
 import org.inksnow.ankhinvoke.map.BlobReferenceGenerator;
 import org.inksnow.ankhinvoke.map.JarReferenceGenerator;
@@ -20,6 +21,7 @@ public class ApplyReferenceTask extends DefaultTask {
   private @NotNull String ankhInvokePackage = AnkhInjectorPlugin.ANKH_INVOKE_PACKAGE;
   private final @NotNull List<@NotNull String> referencePackages = new ArrayList<>();
   private boolean disableClassRename;
+  private @Nullable String paperweightMappingsNamespace;
 
   private @Nullable FileCollection inputJars;
   private @Nullable File outputJar;
@@ -63,6 +65,16 @@ public class ApplyReferenceTask extends DefaultTask {
     this.disableClassRename = disableClassRename;
   }
 
+  @Input
+  @Optional
+  public @Nullable String getPaperweightMappingsNamespace() {
+    return paperweightMappingsNamespace;
+  }
+
+  public void setPaperweightMappingsNamespace(@Nullable String paperweightMappingsNamespace) {
+    this.paperweightMappingsNamespace = paperweightMappingsNamespace;
+  }
+
   @InputFiles
   public @NotNull FileCollection getInputJars() {
     if (inputJars == null) {
@@ -93,7 +105,7 @@ public class ApplyReferenceTask extends DefaultTask {
         .setAnkhInvokePackage(ankhInvokePackage)
         .setDisableClassRename(disableClassRename)
         .appendReferencePackage(referencePackages)
-        .build());
+        .build(), paperweightMappingsNamespace);
     File tempJar = new File(cacheDirectory, "tmp.jar");
     tempJar.getParentFile().mkdirs();
     try {

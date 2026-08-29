@@ -16,6 +16,13 @@ public class AnkhInvokeBukkit {
   }
 
   public static AnkhInvoke.@NotNull Builder forBukkit(@NotNull Class<? extends JavaPlugin> pluginClass) {
+    return forBukkit(pluginClass, true);
+  }
+
+  public static AnkhInvoke.@NotNull Builder forBukkit(
+      @NotNull Class<? extends JavaPlugin> pluginClass,
+      boolean applyPaperMapping
+  ) {
     ClassLoader pluginClassLoader = pluginClass.getClassLoader();
     AnkhInvoke.Builder builder = AnkhInvoke.builder()
         .reference()
@@ -31,11 +38,11 @@ public class AnkhInvokeBukkit {
         /**/.appendLoader(new ClassLoaderPoolLoader(pluginClassLoader))
         /**/.build()
         .referenceRemap()
-        /**/.append(new NmsVersionRemapper())
+        /**/.append(new NmsVersionRemapper(applyPaperMapping))
         /**/.appendRegistry()
         /**/.build();
 
-    if (PaperEnvironment.hasPaperMapping()) {
+    if (applyPaperMapping && PaperEnvironment.hasPaperMapping()) {
       builder.referenceRemap()
           .append(PaperEnvironment.createRemapper());
     }

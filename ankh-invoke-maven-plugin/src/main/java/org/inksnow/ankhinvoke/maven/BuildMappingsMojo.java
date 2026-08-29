@@ -81,6 +81,7 @@ public class BuildMappingsMojo extends AbstractMojo {
           metadata.append("    |- map entry: " + injectBean.getName())
               .append("      |- minecraft version: " + injectBean.getMinecraftVersion())
               .append("      |- build dat hash: " + injectBean.getBuildDataHash())
+              .append("      |- build data directory: " + injectBean.getBuildDataDirectory())
               .append("      |- is use spigot mapping: " + injectBean.isUseSpigotMapping());
           for (String predicate : predicates) {
             metadata.append("      |- predicate: " + predicate);
@@ -95,6 +96,7 @@ public class BuildMappingsMojo extends AbstractMojo {
               .setLogFunction(getLog()::info)
               .setMinecraftVersion(injectBean.getMinecraftVersion())
               .setBuildDataHash(injectBean.getBuildDataHash())
+              .setBuildDataDirectory(injectBean.getBuildDataDirectory())
               .setUseSpigotMapping(injectBean.isUseSpigotMapping())
               .build();
 

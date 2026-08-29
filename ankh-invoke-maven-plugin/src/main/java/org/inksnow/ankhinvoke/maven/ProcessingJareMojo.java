@@ -36,6 +36,13 @@ public class ProcessingJareMojo extends AbstractMojo {
   @Parameter
   private boolean disableClassRename;
 
+  /**
+   * Paper's plugin remapper namespace marker. Set this to {@code mojang} when
+   * the final plugin jar is already Mojang-mapped.
+   */
+  @Parameter
+  private String paperweightMappingsNamespace;
+
   @Override
   public void execute() throws MojoExecutionException, MojoFailureException {
     String ankhInvokePackage = this.ankhInvokePackage == null ? DEFAULT_ANKH_INVOKE_PACKAGE : this.ankhInvokePackage;
@@ -43,7 +50,7 @@ public class ProcessingJareMojo extends AbstractMojo {
         .setAnkhInvokePackage(ankhInvokePackage)
         .setDisableClassRename(disableClassRename)
         .appendReferencePackage(referencePackages)
-        .build());
+        .build(), paperweightMappingsNamespace);
     File tempJar = new File(cacheDirectory, "tmp.jar");
     tempJar.getParentFile().mkdirs();
     try {

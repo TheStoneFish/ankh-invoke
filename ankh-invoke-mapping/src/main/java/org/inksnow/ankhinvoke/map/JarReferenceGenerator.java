@@ -9,22 +9,45 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.List;
+import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 
 public class JarReferenceGenerator {
+  private static final @NotNull String PAPERWEIGHT_MAPPINGS_NAMESPACE = "paperweight-mappings-namespace";
   private static final @NotNull Logger logger = LoggerFactory.getLogger(JarReferenceGenerator.class);
   private final @NotNull BlobReferenceGenerator blobReferenceGenerator;
+  private final @Nullable String paperweightMappingsNamespace;
 
   public JarReferenceGenerator(@NotNull BlobReferenceGenerator blobReferenceGenerator) {
+    this(blobReferenceGenerator, null);
+  }
+
+  public JarReferenceGenerator(
+      @NotNull BlobReferenceGenerator blobReferenceGenerator,
+      @Nullable String paperweightMappingsNamespace
+  ) {
     this.blobReferenceGenerator = blobReferenceGenerator;
+    if (paperweightMappingsNamespace != null
+        && !paperweightMappingsNamespace.equals("mojang")
+        && !paperweightMappingsNamespace.equals("mojang+yarn")
+        && !paperweightMappingsNamespace.equals("spigot")) {
+      throw new IllegalArgumentException("unsupported Paper mappings namespace: " + paperweightMappingsNamespace);
+    }
+    this.paperweightMappingsNamespace = paperweightMappingsNamespace;
   }
 
   public void execute(List<File> inputFiles, File outputFile) throws IOException {
+    Manifest manifest = null;
+
     // accept scan
     for (File inputFile : inputFiles) {
       try(JarInputStream jarIn = new JarInputStream(new FileInputStream(inputFile))) {
+        if (manifest == null) {
+          manifest = jarIn.getManifest();
+        }
         JarEntry entry;
         while ((entry = jarIn.getNextJarEntry()) != null) {
           blobReferenceGenerator.acceptScan(entry.getName(), jarIn);
@@ -32,20 +55,38 @@ public class JarReferenceGenerator {
       }
     }
 
-    try(JarOutputStream jarOut = new JarOutputStream(new FileOutputStream(outputFile))) {
-      for (File inputFile : inputFiles) {
-        try (JarInputStream jarIn = new JarInputStream(new FileInputStream(inputFile))) {
-          handle(jarIn, jarOut);
-        }
+    if (paperweightMappingsNamespace != null) {
+      if (manifest == null) {
+        manifest = new Manifest();
       }
+      Attributes mainAttributes = manifest.getMainAttributes();
+      if (mainAttributes.getValue(Attributes.Name.MANIFEST_VERSION) == null) {
+        mainAttributes.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+      }
+      mainAttributes.putValue(PAPERWEIGHT_MAPPINGS_NAMESPACE, paperweightMappingsNamespace);
+    }
 
-      for (BlobReferenceGenerator.ProcessAction processAction : blobReferenceGenerator.collect()) {
-        if(processAction.isKeep() && processAction.shouldRename() && processAction.shouldReplace()) {
-          jarOut.putNextEntry(new JarEntry(processAction.getNewName()));
-          jarOut.write(processAction.getBytes());
-        } else if (processAction.isRemove() && processAction.shouldRename()){
-          logger.warn("jar generator not support remove in collect scope", new UnsupportedOperationException());
+    try (FileOutputStream output = new FileOutputStream(outputFile)) {
+      JarOutputStream jarOut = manifest == null
+          ? new JarOutputStream(output)
+          : new JarOutputStream(output, manifest);
+      try {
+        for (File inputFile : inputFiles) {
+          try (JarInputStream jarIn = new JarInputStream(new FileInputStream(inputFile))) {
+            handle(jarIn, jarOut);
+          }
         }
+
+        for (BlobReferenceGenerator.ProcessAction processAction : blobReferenceGenerator.collect()) {
+          if(processAction.isKeep() && processAction.shouldRename() && processAction.shouldReplace()) {
+            jarOut.putNextEntry(new JarEntry(processAction.getNewName()));
+            jarOut.write(processAction.getBytes());
+          } else if (processAction.isRemove() && processAction.shouldRename()){
+            logger.warn("jar generator not support remove in collect scope", new UnsupportedOperationException());
+          }
+        }
+      } finally {
+        jarOut.close();
       }
     }
   }
