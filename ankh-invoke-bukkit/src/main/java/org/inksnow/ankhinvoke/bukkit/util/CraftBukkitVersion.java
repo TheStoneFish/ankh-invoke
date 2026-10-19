@@ -34,7 +34,8 @@ public enum CraftBukkitVersion {
   v1_21_R6,
   v1_21_R7,
   v26_1,
-  v26_2;
+  v26_2,
+  v26_3;
 
   private static final @NotNull Logger logger = LoggerFactory.getLogger(CraftBukkitVersion.class);
   private static final @NotNull CraftBukkitVersion CURRENT = createCurrent();
@@ -53,6 +54,9 @@ public enum CraftBukkitVersion {
     }
     if (Bukkit.getBukkitVersion().startsWith("26.2")) {
       return v26_2;
+    }
+    if (Bukkit.getBukkitVersion().startsWith("26.3")) {
+      return v26_3;
     }
 
     String version;
